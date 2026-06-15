@@ -1,0 +1,52 @@
+{
+  "expo": {
+    "name": "Caries Screening",
+    "slug": "ai-dental",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "light",
+    "newArchEnabled": true,
+    "splash": {
+      "backgroundColor": "#0E2A33"
+    },
+    "assetBundlePatterns": [
+      "**/*"
+    ],
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "ng.edu.veritas.cariesscreening",
+      "infoPlist": {
+        "NSCameraUsageDescription": "Used to capture intraoral photographs for caries screening.",
+        "NSPhotoLibraryUsageDescription": "Used to select an existing intraoral photograph for screening."
+      }
+    },
+    "android": {
+      "package": "ng.edu.veritas.cariesscreening",
+      "permissions": [
+        "android.permission.CAMERA",
+        "android.permission.RECORD_AUDIO"
+      ]
+    },
+    "plugins": [
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "Used to capture intraoral photographs for caries screening."
+        }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Used to select an existing intraoral photograph for screening."
+        }
+      ],
+      "react-native-fast-tflite"
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "fc248901-e152-4486-a3cb-488d416fddac"
+      }
+    },
+    "owner": "sams-lab"
+  }
+}
