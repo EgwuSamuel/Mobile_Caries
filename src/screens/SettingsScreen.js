@@ -9,7 +9,7 @@ export default function SettingsScreen({ navigation }) {
   useEffect(() => { (async () => setConfState(await getConf()))(); }, []);
 
   const save = async () => { await setConf(conf); navigation.goBack(); };
-  const steps = [0.25, 0.3, 0.35, 0.4, 0.45, 0.5];
+  const steps = [0.05, 0.1, 0.15, 0.25, 0.4, 0.5];
 
   return (
     <ScrollView contentContainerStyle={s.wrap}>

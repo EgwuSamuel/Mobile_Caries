@@ -23,8 +23,7 @@
     "android": {
       "package": "ng.edu.veritas.cariesscreening",
       "permissions": [
-        "android.permission.CAMERA",
-        "android.permission.RECORD_AUDIO"
+        "android.permission.CAMERA"
       ]
     },
     "plugins": [
@@ -40,7 +39,15 @@
           "photosPermission": "Used to select an existing intraoral photograph for screening."
         }
       ],
-      "react-native-fast-tflite"
+      "react-native-fast-tflite",
+      [
+        "expo-build-properties",
+        {
+          "android": {
+            "kotlinVersion": "1.9.25"
+          }
+        }
+      ]
     ],
     "extra": {
       "eas": {

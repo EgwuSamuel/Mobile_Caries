@@ -13,9 +13,12 @@ import jpeg from 'jpeg-js';
 
 const INPUT = 640;
 const PAD = 114 / 255; // grey letterbox padding, normalised
+const GK_SIZE = 224;   // gatekeeper (dental vs not-dental) input size
 
 let _model = null;
 let _loading = null;
+let _gk = null;
+let _gkLoading = null;
 
 export function loadModel() {
   if (_model) return Promise.resolve(_model);
@@ -26,6 +29,18 @@ export function loadModel() {
     });
   }
   return _loading;
+}
+
+// Gatekeeper: classifies whether the image is an intraoral/dental photo at all.
+export function loadGatekeeper() {
+  if (_gk) return Promise.resolve(_gk);
+  if (!_gkLoading) {
+    _gkLoading = loadTensorflowModel(require('../assets/gatekeeper_fp16.tflite')).then((m) => {
+      _gk = m;
+      return m;
+    });
+  }
+  return _gkLoading;
 }
 
 // compact base64 -> Uint8Array (no Buffer/atob dependency)
@@ -137,9 +152,76 @@ function decode(out, scale, padX, padY, srcW, srcH, confThres, iouThres) {
 export async function detect(uri, srcW, srcH, confThres = 0.4, iouThres = 0.45) {
   const model = await loadModel();
   const t0 = Date.now();
+
+  // --- Stage 1: gatekeeper — is this an intraoral/dental image at all?
+  let dentalProb = null;
+  try {
+    dentalProb = await classifyDental(uri, srcW, srcH);
+  } catch (e) {
+    dentalProb = null; // if the gatekeeper fails, don't block detection
+  }
+
+  // --- Stage 2: caries detector (runs regardless — "warn but allow")
   const { input, scale, padX, padY } = await preprocess(uri, srcW, srcH);
+
+  // --- input sanity (sampled): confirms a real, varied image reached the model
+  let inMin = 1, inMax = 0, sum = 0, cnt = 0;
+  for (let i = 0; i < input.length; i += 97) {
+    const v = input[i];
+    if (v < inMin) inMin = v;
+    if (v > inMax) inMax = v;
+    sum += v; cnt++;
+  }
+  const inputMean = sum / cnt;
+
   const outputs = await model.run([input]); // outputs[0] = Float32Array length 5*8400
   const out = outputs[0];
+
+  // --- highest raw score across all anchors, BEFORE thresholding
+  const N = 8400;
+  let maxScore = 0;
+  for (let a = 0; a < N; a++) { const s = out[4 * N + a]; if (s > maxScore) maxScore = s; }
+
   const detections = decode(out, scale, padX, padY, srcW, srcH, confThres, iouThres);
-  return { detections, inferenceMs: Date.now() - t0, imageWidth: srcW, imageHeight: srcH };
+  return {
+    detections,
+    inferenceMs: Date.now() - t0,
+    imageWidth: srcW,
+    imageHeight: srcH,
+    dentalProb,                       // null if gatekeeper unavailable
+    isDental: dentalProb == null ? null : dentalProb >= 0.5,
+    debug: {
+      maxScore: Math.round(maxScore * 1000) / 1000,
+      dental: dentalProb == null ? 'n/a' : Math.round(dentalProb * 100) / 100,
+      inMin: Math.round(inMin * 100) / 100,
+      inMax: Math.round(inMax * 100) / 100,
+      inMean: Math.round(inputMean * 100) / 100,
+      outLen: out.length,
+      src: `${srcW}x${srcH}`,
+    },
+  };
+}
+
+// Gatekeeper preprocessing: resize to 224x224 (square, matching training), RGB,
+// values 0..255 float (MobileNetV3 preprocessing is baked into the model).
+async function classifyDental(uri, srcW, srcH) {
+  const gk = await loadGatekeeper();
+  const manip = await ImageManipulator.manipulateAsync(
+    uri,
+    [{ resize: { width: GK_SIZE, height: GK_SIZE } }],
+    { compress: 1, format: ImageManipulator.SaveFormat.JPEG, base64: true }
+  );
+  const raw = jpeg.decode(b64ToBytes(manip.base64), { useTArray: true });
+  const input = new Float32Array(GK_SIZE * GK_SIZE * 3);
+  for (let y = 0; y < GK_SIZE; y++) {
+    for (let x = 0; x < GK_SIZE; x++) {
+      const si = (y * raw.width + x) * 4;
+      const di = (y * GK_SIZE + x) * 3;
+      input[di] = raw.data[si];         // 0..255, no normalisation
+      input[di + 1] = raw.data[si + 1];
+      input[di + 2] = raw.data[si + 2];
+    }
+  }
+  const out = await gk.run([input]); // outputs[0] = Float32Array length 1 (sigmoid)
+  return out[0][0];                  // P(dental)
 }
